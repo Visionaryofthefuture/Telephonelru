@@ -2,181 +2,302 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Trie Node
+#define MAX_CONTACTS 100
+#define MAX_PHONE_NUMBER_LENGTH 15
+#define CACHE_CAPACITY 5
+
 typedef struct TrieNode {
-    struct TrieNode* children[10];  // Assuming phone numbers contain only digits (0-9)
-    char* phoneNumber;
+    char key;
+    struct TrieNode *children[10]; 
+    char *contact_name;
+    int is_terminal;
 } TrieNode;
 
-// LRU Cache Node
-typedef struct LRUNode {
-    struct LRUNode* prev;
-    struct LRUNode* next;
-    char* phoneNumber;
-} LRUNode;
+typedef struct LRUCacheEntry {
+    char phone_number[MAX_PHONE_NUMBER_LENGTH];
+    char contact_name[50];
+    struct LRUCacheEntry *prev;
+    struct LRUCacheEntry *next;
+} LRUCacheEntry;
 
-// LRU Cache
-typedef struct LRUCache {
-    int capacity;
-    int count;
-    LRUNode* head;
-    LRUNode* tail;
-} LRUCache;
+TrieNode *root = NULL;
+LRUCacheEntry *lru_cache_head = NULL;
+LRUCacheEntry *lru_cache_tail = NULL;
 
-// Function to initialize a TrieNode
-TrieNode* createTrieNode() {
-    TrieNode* node = (TrieNode*)malloc(sizeof(TrieNode));
+TrieNode *create_trie_node(char key);
+void insert_contact(char *phone_number, char *contact_name);
+void search_contacts_helper(TrieNode *node, char *prefix, char **results, int *count);
+void search_contacts(char *prefix, char **results);
+void display_all_contacts(TrieNode *node);
+
+LRUCacheEntry *create_cache_entry(char *phone_number, char *contact_name);
+void add_to_cache(char *phone_number, char *contact_name);
+void evict_lru_entry();
+char *search_in_cache(char *phone_number);
+void display_lru_cache();
+
+void display_menu() {
+    printf("\nTelephone Directory:\n");
+    printf("1. Add a contact\n");
+    printf("2. Search contacts by prefix\n");
+    printf("3. View all contacts\n");
+    printf("4. Exit\n");
+    printf("Enter your choice: ");
+}
+
+TrieNode *create_trie_node(char key) {
+    TrieNode *node = (TrieNode *)malloc(sizeof(TrieNode));
     if (node) {
-        for (int i = 0; i < 10; ++i) {
+        node->key = key;
+        for (int i = 0; i < 10; i++) {
             node->children[i] = NULL;
         }
-        node->phoneNumber = NULL;
+        node->contact_name = NULL;
+        node->is_terminal = 0;
     }
     return node;
 }
 
-// Function to initialize an LRUCache
-LRUCache* createLRUCache(int capacity) {
-    LRUCache* cache = (LRUCache*)malloc(sizeof(LRUCache));
-    if (cache) {
-        cache->capacity = capacity;
-        cache->count = 0;
-        cache->head = NULL;
-        cache->tail = NULL;
-    }
-    return cache;
-}
-
-// Function to insert a phone number into the Trie
-void insertPhoneNumber(TrieNode* root, const char* phoneNumber, const char* contactName) {
-    TrieNode* current = root;
-    for (int i = 0; i < strlen(phoneNumber); ++i) {
-        int index = phoneNumber[i] - '0';
-        if (!current->children[index]) {
-            current->children[index] = createTrieNode();
-        }
-        current = current->children[index];
-    }
-    current->phoneNumber = strdup(contactName);
-}
-
-// Function to search for a phone number in the Trie
-char* searchPhoneNumber(TrieNode* root, const char* phoneNumber) {
-    TrieNode* current = root;
-    for (int i = 0; i < strlen(phoneNumber); ++i) {
-        int index = phoneNumber[i] - '0';
-        if (!current->children[index]) {
-            return NULL; // Phone number not found
-        }
-        current = current->children[index];
-    }
-    return current->phoneNumber;
-}
-
-// Function to update the LRU Cache
-void updateLRUCache(LRUCache* cache, char* phoneNumber) {
-    if (cache->capacity == 0) {
-        return; // LRU cache disabled
-    }
-
-    LRUNode* newNode = (LRUNode*)malloc(sizeof(LRUNode));
-    newNode->phoneNumber = phoneNumber;
-    newNode->prev = NULL;
-    newNode->next = NULL;
-
-    if (cache->count == 0) {
-        // Cache is empty
-        cache->head = newNode;
-        cache->tail = newNode;
-        cache->count = 1;
-    } else {
-        // Cache is not empty
-        newNode->next = cache->head;
-        cache->head->prev = newNode;
-        cache->head = newNode;
-
-        if (cache->count < cache->capacity) {
-            // Cache not yet at capacity
-            cache->count++;
-        } else {
-            // Cache at capacity, remove the tail node
-            LRUNode* tailPrev = cache->tail->prev;
-            tailPrev->next = NULL;
-            free(cache->tail);
-            cache->tail = tailPrev;
-        }
-    }
-}
-
-// Function to display the Trie
-void displayTrie(TrieNode* root, char* prefix) {
+void insert_contact(char *phone_number, char *contact_name) {
     if (root == NULL) {
+        root = create_trie_node('\0');
+    }
+    TrieNode *current = root;
+    for (int i = 0; i < strlen(phone_number); i++) {
+        int index = phone_number[i] - '0';
+        if (current->children[index] == NULL) {
+            current->children[index] = create_trie_node(phone_number[i]);
+        }
+        current = current->children[index];
+    }
+    if (current->contact_name != NULL) {
+        free(current->contact_name); 
+    }
+    current->contact_name = strdup(contact_name);
+    current->is_terminal = 1;
+
+    add_to_cache(phone_number, contact_name);
+}
+
+void search_contacts_helper(TrieNode *node, char *prefix, char **results, int *count) {
+    if (node == NULL) {
         return;
     }
-    if (root->phoneNumber != NULL) {
-        printf("%s - %s\n", prefix, root->phoneNumber);
+    if (node->is_terminal) {
+        results[(*count)++] = strdup(prefix);
     }
-    for (int i = 0; i < 10; ++i) {
-        if (root->children[i] != NULL) {
-            char newPrefix[strlen(prefix) + 2];
-            sprintf(newPrefix, "%s%d", prefix, i);
-            displayTrie(root->children[i], newPrefix);
+    for (int i = 0; i < 10; i++) {
+        if (node->children[i] != NULL) {
+            char next_prefix[MAX_PHONE_NUMBER_LENGTH];
+            sprintf(next_prefix, "%s%d", prefix, i);
+            search_contacts_helper(node->children[i], next_prefix, results, count);
+        }
+    }
+}
+int cache_size() {
+    int size = 0;
+    LRUCacheEntry *entry = lru_cache_head;
+    while (entry != NULL) {
+        size++;
+        entry = entry->next;
+    }
+    return size;
+}
+
+
+void search_contacts(char *prefix, char **results) {
+    TrieNode *current = root;
+    int index = 0;
+    while (index < strlen(prefix) && current != NULL) {
+        int digit = prefix[index] - '0';
+        current = current->children[digit];
+        index++;
+    }
+    if (current == NULL) {
+        return;
+    }
+    int count = 0;
+    search_contacts_helper(current, prefix, results, &count);
+}
+
+void display_all_contacts(TrieNode *node) {
+    if (node == NULL) {
+        return;
+    }
+    if (node->is_terminal) {
+        printf("%s - %s\n", node->key == '\0' ? "" : node->contact_name, node->contact_name);
+    }
+    for (int i = 0; i < 10; i++) {
+        if (node->children[i] != NULL) {
+            char next_prefix[MAX_PHONE_NUMBER_LENGTH];
+            sprintf(next_prefix, "%s%d", "", i);
+            display_all_contacts(node->children[i]);
         }
     }
 }
 
-// Function to display the LRU Cache
-void displayLRUCache(LRUCache* cache) {
-    printf("\nLRU Cache Contents:\n");
-    LRUNode* current = cache->head;
-    while (current != NULL) {
-        printf("%s\n", current->phoneNumber);
-        current = current->next;
+LRUCacheEntry *create_cache_entry(char *phone_number, char *contact_name) {
+    LRUCacheEntry *entry = (LRUCacheEntry *)malloc(sizeof(LRUCacheEntry));
+    if (entry) {
+        strcpy(entry->phone_number, phone_number);
+        strcpy(entry->contact_name, contact_name);
+        entry->prev = NULL;
+        entry->next = NULL;
+    }
+    return entry;
+}
+
+void add_to_cache(char *phone_number, char *contact_name) {
+    // Check if phone number already exists in cache and move it to the front (MRU position)
+    LRUCacheEntry *entry = lru_cache_head;
+    while (entry != NULL) {
+        if (strcmp(entry->phone_number, phone_number) == 0) {
+            // Move the found entry to the front (MRU position)
+            if (entry != lru_cache_head) {
+                if (entry == lru_cache_tail) {
+                    lru_cache_tail = entry->prev;
+                }
+                entry->prev->next = entry->next;
+                if (entry->next != NULL) {
+                    entry->next->prev = entry->prev;
+                }
+                entry->next = lru_cache_head;
+                entry->prev = NULL;
+                lru_cache_head->prev = entry;
+                lru_cache_head = entry;
+            }
+            return;
+        }
+        entry = entry->next;
+    }
+
+    // Create new cache entry and add to the front (MRU position)
+    LRUCacheEntry *new_entry = create_cache_entry(phone_number, contact_name);
+    if (new_entry == NULL) {
+        return; // Memory allocation failed
+    }
+
+    if (lru_cache_head == NULL) {
+        lru_cache_head = new_entry;
+        lru_cache_tail = new_entry;
+    } else {
+        new_entry->next = lru_cache_head;
+        lru_cache_head->prev = new_entry;
+        lru_cache_head = new_entry;
+
+        // Evict the LRU entry if cache size exceeds capacity
+        if (cache_size() > CACHE_CAPACITY) {
+            evict_lru_entry();
+        }
     }
 }
 
-// Function to simulate the user interface
-void userInterface(TrieNode* root, LRUCache* cache) {
-    printf("Welcome to the Telephone Directory!\n");
-
-    while (1) {
-        char prefix[20];
-        printf("\nEnter a prefix to search for contacts (or 'exit' to quit): ");
-        scanf("%s", prefix);
-
-        if (strcmp(prefix, "exit") == 0) {
-            break;
-        }
-
-        printf("Searching for contacts with prefix '%s'...\n", prefix);
-
-        char* result = searchPhoneNumber(root, prefix);
-
-        if (result != NULL) {
-            printf("Results:\n%s - %s\n", prefix, result);
-            updateLRUCache(cache, result);
-        } else {
-            printf("No contacts found with the given prefix.\n");
-        }
-
-        displayLRUCache(cache);
+void evict_lru_entry() {
+    if (lru_cache_tail == NULL) {
+        return;
     }
 
-    printf("Exiting the Telephone Directory. Goodbye!\n");
+    // Remove the LRU entry (tail) from the cache
+    if (lru_cache_tail == lru_cache_head) {
+        free(lru_cache_tail);
+        lru_cache_head = NULL;
+        lru_cache_tail = NULL;
+    } else {
+        LRUCacheEntry *temp = lru_cache_tail;
+        lru_cache_tail = lru_cache_tail->prev;
+        lru_cache_tail->next = NULL;
+        free(temp);
+    }
 }
 
-// Main function for testing
+char *search_in_cache(char *phone_number) {
+    // Search for phone number in the cache and return contact name if found
+    LRUCacheEntry *entry = lru_cache_head;
+    while (entry != NULL) {
+        if (strcmp(entry->phone_number, phone_number) == 0) {
+            // Move the found entry to the front (MRU position)
+            if (entry != lru_cache_head) {
+                if (entry == lru_cache_tail) {
+                    lru_cache_tail = entry->prev;
+                }
+                entry->prev->next = entry->next;
+                if (entry->next != NULL) {
+                    entry->next->prev = entry->prev;
+                }
+                entry->next = lru_cache_head;
+                entry->prev = NULL;
+                lru_cache_head->prev = entry;
+                lru_cache_head = entry;
+            }
+            return entry->contact_name;
+        }
+        entry = entry->next;
+    }
+    return NULL; // Phone number not found in cache
+}
+
+void display_lru_cache() {
+    printf("LRU Cache Contents:\n");
+    LRUCacheEntry *entry = lru_cache_head;
+    while (entry != NULL) {
+        printf("%s - %s\n", entry->phone_number, entry->contact_name);
+        entry = entry->next;
+    }
+}
+
 int main() {
-    TrieNode* root = createTrieNode();
-    LRUCache* cache = createLRUCache(3);
+    int choice;
+    do {
+        display_menu();
+        scanf("%d", &choice);
+        switch (choice) {
+            case 1: {
+                char phone_number[MAX_PHONE_NUMBER_LENGTH];
+                char contact_name[50];
+                printf("Enter phone number: ");
+                scanf("%s", phone_number);
+                printf("Enter contact name: ");
+                scanf("%s", contact_name);
+                insert_contact(phone_number, contact_name);
+                printf("Contact added successfully!\n");
+                break;
+            }
+            case 2: {
+                char prefix[MAX_PHONE_NUMBER_LENGTH];
+                printf("Enter prefix to search: ");
+                scanf("%s", prefix);
+                char *results[MAX_CONTACTS];
+                for (int i = 0; i < MAX_CONTACTS; i++) {
+                    results[i] = NULL;
+                }
+                search_contacts(prefix, results);
+                printf("Search results:\n");
+                for (int i = 0; i < MAX_CONTACTS && results[i] != NULL; i++) {
+                    char *contact_name = search_in_cache(results[i]);
+                    if (contact_name != NULL) {
+                        printf("%s - %s\n", results[i], contact_name);
+                    }
+                }
+                break;
+            }
+            case 3: {
+                printf("All Contacts:\n");
+                display_all_contacts(root);
+                break;
+            }
+            case 4: {
+                printf("Exiting\n");
+                break;
+            }
+            default: {
+                printf("Invalid choice. Please try again.\n");
+                break;
+            }
+        }
+    } while (choice != 4);
 
-    insertPhoneNumber(root, "123", "Alice");
-    insertPhoneNumber(root, "987", "Andrew");
-    insertPhoneNumber(root, "555", "Alan");
-
-    displayTrie(root, "");
-
-    userInterface(root, cache);
+    // Clean up memory (TODO: Implement memory cleanup for Trie and LRU cache)
+    // Free any dynamically allocated memory for Trie nodes and LRU cache entries
 
     return 0;
 }
