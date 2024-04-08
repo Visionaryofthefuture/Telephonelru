@@ -28,7 +28,7 @@ TrieNode *create_trie_node(char key);
 void insert_contact(char *phone_number, char *contact_name);
 void search_contacts_helper(TrieNode *node, char *prefix, char **results, int *count);
 void search_contacts(char *prefix, char **results);
-void display_all_contacts(TrieNode *node);
+void display_all_contacts(TrieNode *node, char *prefix);
 
 LRUCacheEntry *create_cache_entry(char *phone_number, char *contact_name);
 void add_to_cache(char *phone_number, char *contact_name);
@@ -120,18 +120,23 @@ void search_contacts(char *prefix, char **results) {
     search_contacts_helper(current, prefix, results, &count);
 }
 
-void display_all_contacts(TrieNode *node) {
-    if (node == NULL) {
+void display_all_contacts(TrieNode *node, char *prefix)
+{
+    if (node == NULL)
+    {
         return;
     }
-    if (node->is_terminal) {
-        printf("%s - %s\n", node->key == '\0' ? "" : node->contact_name, node->contact_name);
+    if (node->is_terminal)
+    {
+        printf("%s - %s\n", prefix, node->contact_name);
     }
-    for (int i = 0; i < 10; i++) {
-        if (node->children[i] != NULL) {
+    for (int i = 0; i < 10; i++)
+    {
+        if (node->children[i] != NULL)
+        {
             char next_prefix[MAX_PHONE_NUMBER_LENGTH];
-            sprintf(next_prefix, "%s%d", "", i);
-            display_all_contacts(node->children[i]);
+            sprintf(next_prefix, "%s%d", prefix, i);
+            display_all_contacts(node->children[i], next_prefix);
         }
     }
 }
@@ -282,7 +287,7 @@ int main() {
             }
             case 3: {
                 printf("All Contacts:\n");
-                display_all_contacts(root);
+                display_all_contacts(root, "");
                 break;
             }
             case 4: {
