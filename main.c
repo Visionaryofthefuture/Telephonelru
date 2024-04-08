@@ -16,6 +16,7 @@ typedef struct TrieNode {
 typedef struct LRUCacheEntry {
     char phone_number[MAX_PHONE_NUMBER_LENGTH];
     char contact_name[50];
+    int search_frequency;
     struct LRUCacheEntry *prev;
     struct LRUCacheEntry *next;
 } LRUCacheEntry;
@@ -34,14 +35,16 @@ LRUCacheEntry *create_cache_entry(char *phone_number, char *contact_name);
 void add_to_cache(char *phone_number, char *contact_name);
 void evict_lru_entry();
 char *search_in_cache(char *phone_number);
-void display_lru_cache();
+void sort_cache_entries_by_frequency();
+void display_frequently_searched_contacts();
 
 void display_menu() {
     printf("\nTelephone Directory:\n");
     printf("1. Add a contact\n");
     printf("2. Search contacts by prefix\n");
     printf("3. View all contacts\n");
-    printf("4. Exit\n");
+    printf("4. View Frequently Searched contacts\n");
+    printf("5. Exit\n");
     printf("Enter your choice: ");
 }
 
@@ -182,6 +185,8 @@ void add_to_cache(char *phone_number, char *contact_name) {
         return; // Memory allocation failed
     }
 
+    new_entry->search_frequency = 0;
+
     if (lru_cache_head == NULL) {
         lru_cache_head = new_entry;
         lru_cache_tail = new_entry;
@@ -221,6 +226,7 @@ char *search_in_cache(char *phone_number) {
     while (entry != NULL) {
         if (strcmp(entry->phone_number, phone_number) == 0) {
             // Move the found entry to the front (MRU position)
+            entry->search_frequency++;
             if (entry != lru_cache_head) {
                 if (entry == lru_cache_tail) {
                     lru_cache_tail = entry->prev;
@@ -241,14 +247,71 @@ char *search_in_cache(char *phone_number) {
     return NULL; // Phone number not found in cache
 }
 
-void display_lru_cache() {
-    printf("LRU Cache Contents:\n");
-    LRUCacheEntry *entry = lru_cache_head;
-    while (entry != NULL) {
-        printf("%s - %s\n", entry->phone_number, entry->contact_name);
-        entry = entry->next;
-    }
+void sort_cache_entries_by_frequency() {
+    // Bubble sort implementation
+    int swapped;
+    LRUCacheEntry *ptr1;
+    LRUCacheEntry *lptr = NULL;
+
+    // Check if cache is empty
+    if (lru_cache_head == NULL) 
+        return;
+
+    do {
+        swapped = 0;
+        ptr1 = lru_cache_head;
+
+        while (ptr1->next != lptr) {
+            if (ptr1->search_frequency < ptr1->next->search_frequency) {
+                // Swap the entries
+                char temp_number[MAX_PHONE_NUMBER_LENGTH];
+                char temp_name[50];
+                int temp_frequency;
+
+                strcpy(temp_number, ptr1->phone_number);
+                strcpy(temp_name, ptr1->contact_name);
+                temp_frequency = ptr1->search_frequency;
+
+                strcpy(ptr1->phone_number, ptr1->next->phone_number);
+                strcpy(ptr1->contact_name, ptr1->next->contact_name);
+                ptr1->search_frequency = ptr1->next->search_frequency;
+
+                strcpy(ptr1->next->phone_number, temp_number);
+                strcpy(ptr1->next->contact_name, temp_name);
+                ptr1->next->search_frequency = temp_frequency;
+
+                swapped = 1;
+            }
+            ptr1 = ptr1->next;
+        }
+        lptr = ptr1;
+    } while (swapped);
+    return;
+
 }
+
+void display_frequently_searched_contacts() {
+    // Sort cache entries based on search frequency
+    sort_cache_entries_by_frequency();
+
+    // Check if cache is empty
+    if (lru_cache_head == NULL) {
+        printf("No contacts found.\n");
+        return;
+    }
+
+    // Limit the number of contacts to display
+    int count = 0;
+    LRUCacheEntry *entry = lru_cache_head;
+    while (entry != NULL && count < 5) {
+        printf("%s - %s (Searched %d times)\n", entry->phone_number, entry->contact_name, entry->search_frequency);
+        entry = entry->next;
+        count++;
+    }
+    return;
+}
+
+
 
 int main() {
     int choice;
@@ -291,6 +354,11 @@ int main() {
                 break;
             }
             case 4: {
+                printf("Frequently Searched Contacts:\n");
+                display_frequently_searched_contacts();
+                break;
+            }
+            case 5: {
                 printf("Exiting\n");
                 break;
             }
@@ -299,7 +367,7 @@ int main() {
                 break;
             }
         }
-    } while (choice != 4);
+    } while (choice != 5);
 
     // Clean up memory (TODO: Implement memory cleanup for Trie and LRU cache)
     // Free any dynamically allocated memory for Trie nodes and LRU cache entries
