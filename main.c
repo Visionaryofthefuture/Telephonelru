@@ -34,6 +34,7 @@ void search_contacts_helper(TrieNode *node, char *prefix, char **results, int *c
 void search_contacts(char *prefix, char **results);
 void display_all_contacts(TrieNode *node, char *prefix);
 
+
 LRUCacheEntry *create_cache_entry(char *phone_number, char *contact_name);
 void add_to_cache(char *phone_number, char *contact_name);
 void evict_lru_entry();
@@ -45,7 +46,7 @@ void display_menu()
 {
     printf("\nTelephone Directory:\n");
     printf("1. Add a contact\n");
-    printf("2. Search contacts by prefix\n");
+    printf("2. Search contacts by name\n");
     printf("3. View all contacts\n");
     printf("4. View Frequently Searched contacts\n");
     printf("5. Exit\n");
@@ -71,6 +72,36 @@ TrieNode *create_trie_node(char key)
         node->is_terminal = 0;
     }
     return node;
+}
+void free_trie_nodes(TrieNode *node)
+{
+    if (node == NULL)
+    {
+        return;
+    }
+    for (int i = 0; i < ALPHABET_SIZE; i++)
+    {
+        free_trie_nodes(node->children[i]);
+    }
+    free(node->phone_number);
+    free(node);
+}
+
+void free_lru_cache_entries()
+{
+    LRUCacheEntry *entry = lru_cache_head;
+    while (entry != NULL)
+    {
+        LRUCacheEntry *temp = entry;
+        entry = entry->next;
+        free(temp);
+    }
+}
+
+void cleanup_memory()
+{
+    free_trie_nodes(root);
+    free_lru_cache_entries();
 }
 
 void insert_contact(char *phone_number, char *contact_name)
@@ -443,9 +474,10 @@ int main()
         case 3:
         {
             printf("All Contacts:\n");
-            display_all_contacts(root, "");
+            display_all_contacts(root, ""); // Call the display_all_contacts function
             break;
         }
+
         case 4:
         {
             printf("Frequently Searched Contacts:\n");
@@ -465,8 +497,7 @@ int main()
         }
     } while (choice != 5);
 
-    // Clean up memory (TODO: Implement memory cleanup for Trie and LRU cache)
-    // Free any dynamically allocated memory for Trie nodes and LRU cache entries
-
+    cleanup_memory();
+    printf("Cleared Lru Cache And Trie. \n");
     return 0;
 }
