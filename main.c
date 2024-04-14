@@ -33,7 +33,7 @@ void insert_contact(char *phone_number, char *contact_name);
 void search_contacts_helper(TrieNode *node, char *prefix, char **results, int *count);
 void search_contacts(char *prefix, char **results);
 void display_all_contacts(TrieNode *node, char *prefix);
-
+void delete_contact(char *contact_name);
 
 LRUCacheEntry *create_cache_entry(char *phone_number, char *contact_name);
 void add_to_cache(char *phone_number, char *contact_name);
@@ -49,7 +49,8 @@ void display_menu()
     printf("2. Search contacts by name\n");
     printf("3. View all contacts\n");
     printf("4. View Frequently Searched contacts\n");
-    printf("5. Exit\n");
+    printf("5. Delete a contact\n"); // New option
+    printf("6. Exit\n");
     printf("Enter your choice: ");
 }
 
@@ -415,6 +416,61 @@ void display_frequently_searched_contacts()
     return;
 }
 
+void delete_contact(char *contact_name)
+{
+    // Search for the contact in the Trie data structure
+    TrieNode *current = root;
+    for (int i = 0; i < strlen(contact_name); i++)
+    {
+        int index = get_alphabet_index(contact_name[i]);
+        if (current->children[index] == NULL)
+        {
+            // Contact not found in the Trie
+            return;
+        }
+        current = current->children[index];
+    }
+
+    // Remove the contact from the Trie
+    if (current->phone_number != NULL)
+    {
+        free(current->phone_number);
+        current->phone_number = NULL;
+        current->is_terminal = 0;
+    }
+
+    // Search for the contact in the LRU cache and remove it
+    LRUCacheEntry *entry = lru_cache_head;
+    while (entry != NULL)
+    {
+        if (strcmp(entry->contact_name, contact_name) == 0)
+        {
+            // Remove the entry from the cache
+            if (entry == lru_cache_head)
+            {
+                lru_cache_head = entry->next;
+                if (lru_cache_head != NULL)
+                {
+                    lru_cache_head->prev = NULL;
+                }
+            }
+            else if (entry == lru_cache_tail)
+            {
+                lru_cache_tail = entry->prev;
+                lru_cache_tail->next = NULL;
+            }
+            else
+            {
+                entry->prev->next = entry->next;
+                entry->next->prev = entry->prev;
+            }
+            free(entry);
+            return;
+        }
+        entry = entry->next;
+    }
+}
+
 int main()
 {
     int choice;
@@ -486,16 +542,26 @@ int main()
         }
         case 5:
         {
+            char contact_name[50];
+            printf("Enter contact name to delete: ");
+            scanf("%s", contact_name);
+            delete_contact(contact_name);
+            printf("Contact deleted successfully!\n");
+            break;
+        }
+        case 6:
+        {
             printf("Exiting\n");
             break;
         }
+
         default:
         {
             printf("Invalid choice. Please try again.\n");
             break;
         }
         }
-    } while (choice != 5);
+    } while (choice != 6);
 
     cleanup_memory();
     printf("Cleared Lru Cache And Trie. \n");
